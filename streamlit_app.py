@@ -8,18 +8,7 @@ st.set_page_config(page_title="AI Sentiment Analysis", layout="centered")
 st.title("AI Sentiment Analysis App")
 st.write("Enter text below and submit for sentiment analysis. Choose a model in the sidebar.")
 
-# Model selector in the sidebar
-model_options = ["Auto (best available)", "Transformers", "TextBlob", "Lexicon"]
-model_choice = st.sidebar.selectbox("Model", model_options, index=0)
-st.sidebar.write("Available: ", "Transformers" if USE_TRANSFORMERS else "Transformers (not installed)")
-
-# Help and export in sidebar
-st.sidebar.markdown("---")
-st.sidebar.markdown("Use the form below to type text and submit. History is stored in this session.")
-if "history" in st.session_state and st.session_state.history:
-    df_hist = pd.DataFrame(st.session_state.history)
-    csv = df_hist.to_csv(index=False)
-    st.sidebar.download_button("Download history CSV", csv, file_name="sentiment_history.csv")
+# Sidebar and model selector are initialized after determining available backends
 
 
 # Try to use Hugging Face transformers; if not installed, fallback to TextBlob
@@ -48,6 +37,19 @@ except Exception:
     TextBlob = None
 
 # If transformers was available but pipeline failed to load, we'll fall back to TextBlob below
+
+# Model selector in the sidebar (after availability detection)
+model_options = ["Auto (best available)", "Transformers", "TextBlob", "Lexicon"]
+model_choice = st.sidebar.selectbox("Model", model_options, index=0)
+st.sidebar.write("Available: ", "Transformers" if USE_TRANSFORMERS else "Transformers (not installed)")
+
+# Help and export in sidebar
+st.sidebar.markdown("---")
+st.sidebar.markdown("Use the form below to type text and submit. History is stored in this session.")
+if "history" in st.session_state and st.session_state.history:
+    df_hist = pd.DataFrame(st.session_state.history)
+    csv = df_hist.to_csv(index=False)
+    st.sidebar.download_button("Download history CSV", csv, file_name="sentiment_history.csv")
 
 
 def analyze_with_transformers(text: str):
