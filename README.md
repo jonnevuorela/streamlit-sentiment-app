@@ -1,19 +1,17 @@
-# 🎈 Blank app template
 
-A simple Streamlit app template for you to modify!
+# AI Sentiment Analysis (Streamlit)
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://blank-app-template.streamlit.app/)
+- **Purpose:** small Streamlit app that accepts user text and shows sentiment.
+- **How it works:** prefers a Hugging Face `sentiment-analysis` pipeline; if `transformers` isn't available it falls back to `TextBlob`; if that isn't installed it uses a small built-in lexicon.
+- **Model notes:** the agent that built this repo used `GPT-5 mini` to help author code and commits. The app itself uses the Hugging Face default sentiment model (e.g. `distilbert-base-uncased-finetuned-sst-2-english`) when `transformers` is available.
+- **Run locally:**
 
-### How to run it on your own machine
+  ```bash
+  pip install -r requirements.txt
+  python -m streamlit run streamlit_app.py
+  ```
 
-1. Install the requirements
+- **Deployment:** push to GitHub (done to `main`) and deploy on Streamlit Community Cloud by connecting this repository. The app is ready for deployment; Streamlit will install `requirements.txt` and run `streamlit_app.py`.
 
-   ```
-   $ pip install -r requirements.txt
-   ```
 
-2. Run the app
 
-   ```
-   $ streamlit run streamlit_app.py
-   ```
