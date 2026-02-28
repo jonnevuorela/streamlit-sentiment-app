@@ -1,9 +1,25 @@
 import streamlit as st
+import pandas as pd
+import altair as alt
+from datetime import datetime
 
 st.set_page_config(page_title="AI Sentiment Analysis", layout="centered")
 
 st.title("AI Sentiment Analysis App")
-st.write("Enter text below and click Analyze. Uses a Hugging Face sentiment model if available, otherwise falls back to TextBlob.")
+st.write("Enter text below and submit for sentiment analysis. Choose a model in the sidebar.")
+
+# Model selector in the sidebar
+model_options = ["Auto (best available)", "Transformers", "TextBlob", "Lexicon"]
+model_choice = st.sidebar.selectbox("Model", model_options, index=0)
+st.sidebar.write("Available: ", "Transformers" if USE_TRANSFORMERS else "Transformers (not installed)")
+
+# Help and export in sidebar
+st.sidebar.markdown("---")
+st.sidebar.markdown("Use the form below to type text and submit. History is stored in this session.")
+if "history" in st.session_state and st.session_state.history:
+    df_hist = pd.DataFrame(st.session_state.history)
+    csv = df_hist.to_csv(index=False)
+    st.sidebar.download_button("Download history CSV", csv, file_name="sentiment_history.csv")
 
 
 # Try to use Hugging Face transformers; if not installed, fallback to TextBlob
@@ -86,24 +102,51 @@ def analyze_with_lexicon(text: str):
     return {"label": label, "score": float(conf)}
 
 
-user_input = st.text_area("Enter text to analyze sentiment:", height=160)
+with st.form("input_form"):
+    user_input = st.text_area("Enter text to analyze sentiment:", height=160)
+    submitted = st.form_submit_button("Analyze")
 
-if st.button("Analyze"):
+
+@st.cache_data
+def cached_analyze(text: str, mode: str):
+    # mode: one of model_options
+    mode = mode or "Auto (best available)"
+    # Resolve actual mode
+    if mode.startswith("Auto"):
+        if USE_TRANSFORMERS and transformer_pipeline is not None:
+            actual = "Transformers"
+        elif TextBlob is not None:
+            actual = "TextBlob"
+        else:
+            actual = "Lexicon"
+    else:
+        actual = mode
+
+    if actual == "Transformers":
+        return analyze_with_transformers(text)
+    elif actual == "TextBlob":
+        return analyze_with_textblob(text)
+    else:
+        return analyze_with_lexicon(text)
+
+if submitted:
     if not user_input:
         st.warning("Please enter some text.")
     else:
         with st.spinner("Analyzing..."):
-            # Prefer transformer pipeline if available and loaded; otherwise use TextBlob then lexicon fallback
-            if USE_TRANSFORMERS and transformer_pipeline is not None:
-                result = analyze_with_transformers(user_input)
-            elif TextBlob is not None:
-                result = analyze_with_textblob(user_input)
-            else:
-                # Use lexicon-based fallback (no external deps)
-                result = analyze_with_lexicon(user_input)
+            result = cached_analyze(user_input, model_choice)
 
         label = result.get("label")
-        score = result.get("score", 0.0)
+        score = float(result.get("score", 0.0))
+        # Which actual model was used
+        used_model = model_choice
+        if model_choice.startswith("Auto"):
+            if USE_TRANSFORMERS and transformer_pipeline is not None:
+                used_model = "Transformers"
+            elif TextBlob is not None:
+                used_model = "TextBlob"
+            else:
+                used_model = "Lexicon"
         if label == "POSITIVE":
             st.success(f"Positive — Confidence: {score:.2%}")
         elif label == "NEGATIVE":
@@ -113,3 +156,61 @@ if st.button("Analyze"):
         else:
             st.warning("Model error or missing dependency: see console for details.")
         st.write("Model output:", result)
+
+        # Record history in session state
+        if "history" not in st.session_state:
+            st.session_state.history = []
+        st.session_state.history.append({
+            "time": datetime.now(),
+            "text": user_input,
+            "label": label,
+            "score": score,
+            "model": used_model,
+        })
+
+        # Visualizations
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.subheader("Result")
+            st.markdown(f"**Sentiment:** {label}")
+            st.markdown(f"**Confidence:** {score:.2%}")
+            # confidence bar using Altair
+            conf_df = pd.DataFrame({"score": [score]})
+            bar = alt.Chart(conf_df).mark_bar(size=40).encode(
+                x=alt.X("score:Q", scale=alt.Scale(domain=(0, 1)), title=None),
+                color=alt.condition(alt.datum.score > 0.5, alt.value("#16a34a"), alt.value("#ef4444"))
+            )
+            st.altair_chart(bar, use_container_width=True)
+            st.caption(f"Model used: {used_model}")
+        with col2:
+            st.subheader("Quick metrics")
+            st.metric("Sentiment", label)
+            st.metric("Confidence", f"{score:.2%}")
+
+        # Prepare history dataframe
+        if st.session_state.history:
+            df = pd.DataFrame(st.session_state.history)
+            # Label distribution
+            st.subheader("Label distribution")
+            dist = df["label"].value_counts().reset_index()
+            dist.columns = ["label", "count"]
+            chart = alt.Chart(dist).mark_bar().encode(
+                x=alt.X("label:N", sort=["POSITIVE", "NEUTRAL", "NEGATIVE"]),
+                y="count:Q",
+                color="label:N",
+            )
+            st.altair_chart(chart, use_container_width=True)
+
+            # Confidence over time
+            st.subheader("Confidence over time")
+            df_time = df.copy()
+            df_time["time"] = pd.to_datetime(df_time["time"]) 
+            line = alt.Chart(df_time).mark_line(point=True).encode(
+                x=alt.X("time:T", title="Time"),
+                y=alt.Y("score:Q", title="Confidence"),
+                color=alt.Color("label:N")
+            )
+            st.altair_chart(line, use_container_width=True)
+
+            st.subheader("History")
+            st.dataframe(df[["time", "model", "label", "score", "text"]].sort_values(by="time", ascending=False))
